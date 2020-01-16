@@ -1,4 +1,4 @@
-def find_addr(segment: str, index: str) -> str:
+def _find_addr(segment: str, index: str) -> str:
     try:
         temp_addr = 5 + int(index)
     except ValueError:
@@ -24,7 +24,7 @@ def find_addr(segment: str, index: str) -> str:
 
 
 def write_push(segment: str, index: str) -> tuple:
-    addr = find_addr(segment, index)
+    addr = _find_addr(segment, index)
     
     if segment == 'constant':
         D = f'D=A    // D = {index}'
@@ -43,7 +43,7 @@ def write_push(segment: str, index: str) -> tuple:
 
 
 def write_pop(segment: str, index: str) -> tuple:
-    addr = find_addr(segment, index)
+    addr = _find_addr(segment, index)
 
     if segment == 'pointer':
         return (
