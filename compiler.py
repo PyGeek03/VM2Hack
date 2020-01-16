@@ -1,81 +1,125 @@
+import contextlib, os
 import mem_access
 import calculation as calc
 import function
 import branching
 
+# Routing table for functions without argument
+no_arg = {
+    'add': calc.write_add,
+    'sub': calc.write_sub,
+    'and': calc.write_and,
+    'or' : calc.write_or,
 
-def compile(vm_filepath):
-    filepath = vm_filepath[:-3]
-    filename = filepath.split("/")[-1]
-    asm_filepath = filepath + '.asm'
+    'not': calc.write_not,
+    'neg': calc.write_neg,
 
-    with open(vm_filepath) as vm_file, open(asm_filepath, 'w') as asm_file:
-        # Write Hack bootstrap code
-        init_asm = (
-            "// Bootstrap"          "\n"
-            "@256   // set SP=256"  "\n"
-            "D=A"                   "\n"
-            "@0"                    "\n"
-            "M=D"                   "\n"
-        )
-        asm_file.write(init_asm)
+    'return': function.write_return,
+}
 
-        # Set up routing table for commands without argument
-        no_arg = {
-            'add': calc.write_add,
-            'sub': calc.write_sub,
-            'and': calc.write_and,
-            'or' : calc.write_or,
+# Routing table for functions with arguments
+with_args = {
+    'eq' : calc.write_eq,
+    'gt' : calc.write_gt,
+    'lt' : calc.write_lt,
 
-            'eq' : calc.write_eq,
-            'gt' : calc.write_gt,
-            'lt' : calc.write_lt,
+    'push'     : mem_access.write_push,
+    'pop'      : mem_access.write_pop,
 
-            'not': calc.write_not,
-            'neg': calc.write_neg,
-            'return': function.write_return,
-        }
+    'label'    : branching.write_label,
+    'goto'     : branching.write_goto,
+    'if-goto'  : branching.write_if,
 
-        # Set up routing table for commands with arguments
-        with_args = {
-            'push'     : mem_access.write_push,
-            'pop'      : mem_access.write_pop,
-            'label'    : branching.write_label,
-            'goto'     : branching.write_goto,
-            'if-goto'  : branching.write_if,
-            'call'     : function.write_call,
-            'function' : function.write_function,
-        }
+    'call'     : function.write_call,
+    'function' : function.write_function,
+}
 
-        # Go through vm file, line by line
-        for vm_line in vm_file:
-            # Skip blank lines
-            if vm_line == "\n":
-                continue
 
-            # Document the vm source line
-            asm_header = '// ' + vm_line
+def bootstrap(asm_filepath: str) -> None:
+    '''Write Hack bootstrap code'''
 
-            # Analyze the vm source line
-            tokens = vm_line.split()
-            command, *args = tokens
+    init_asm = [
+        "// bootstrap",
+        '',
+        "@256",
+        "D=A",
+        "@SP",
+        "M=D",
+        '',
+        "@300",
+        "D=A",
+        "@LCL",
+        "M=D",
+        '',
+        "@400",
+        "D=A",
+        "@ARG",
+        "M=D",
+        '',
+        "@3000",
+        "D=A",
+        "@THIS",
+        "M=D",
+        '',
+        "@3010",
+        "D=A",
+        "@THAT",
+        "M=D",
+        '',
+    ]  # TODO: add call to Sys.init
 
-            # Compile!
-            if command == '//':
-                # skip comment lines
-                asm_line = ""
-            elif args == []:
-                # commands without argument
-                asm_line = no_arg[command]()
-            elif args[0] == 'static':
-                # accessing static segment is quite pesky
-                label = filename + "." + str(args[1])
-                asm_line = with_args[command]('static', label)
-            else:
-                # commands with arguments
-                asm_line = with_args[command](*args)
+    with open(asm_filepath, 'w') as asm_file:  # overwrite current .asm file, if exists
+        for line in init_asm: 
+            asm_file.write('%s\n' % line)
 
-            # Finally, write to asm file
-            asm_block = asm_header + asm_line
-            print(asm_block, end="")
-            asm_file.write(asm_block)
+
+def compile(asm_filepath: str, vm_files: list) -> None:
+    '''Main compiler'''
+
+    # Keep count of "stateful" commands
+    count = {
+        'eq': 0,
+        'lt': 0,
+        'gt': 0,
+        'call': 0,
+    }
+
+    # Bootstrap asm file
+    bootstrap(asm_filepath)
+
+    # Compile all vm file in the list into the asm file
+    for vm_filepath in vm_files:
+        filename = os.path.basename(asm_filepath)[:-4]  # for static segment & function command
+        with open(vm_filepath) as vm_file, open(asm_filepath, 'a') as asm_file:
+            for vm_line in vm_file:
+                # Document the vm source line
+                asm_comment = '// ' + vm_line
+                asm_file.write(asm_comment)
+
+                # Tokenize and analyze the vm source line
+                tokens = vm_line.split("//")[0].split()  # ignore comments
+                try:
+                    command, *args = tokens
+                except ValueError:  # blank line or comment line
+                    continue
+
+                # Compile!
+                if command in no_arg:
+                    # commands without argument
+                    asm_block = no_arg[command]()
+                elif command in count:
+                    # "stateful" commands
+                    asm_block = with_args[command](*args, count[command])
+                    count[command] += 1
+                elif args[0] == 'static':
+                    # accessing static segment is quite pesky
+                    label = filename + "." + str(args[1])
+                    asm_block = with_args[command]('static', label)
+                else:
+                    # other commands with arguments
+                    asm_block = with_args[command](*args)
+
+                # Finally, write to asm file
+                for line in asm_block:
+                    asm_file.write('%s\n' % line)
+                asm_file.write('\n')  # separate blocks
