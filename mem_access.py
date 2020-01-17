@@ -1,37 +1,35 @@
-def _find_addr(segment: str, index: str) -> str:
-    try:
-        temp_addr = 5 + int(index)
-    except ValueError:
-        # only static segment has non-numeric "index" (actually label)
-        return f'@{index}'
+from typing import Tuple
 
+
+def _find_addr(segment: str, index: str, state: dict) -> str:
     latt_common = (
         'D=M    // D = segmentPointer'  '\n'
         f'@{index}'                     '\n'
         f'A=A+D  // addr = segmentPointer + {index}'
     )
-    numeric_segments = {
+    address = {
         'constant': f'@{index}',
-        'temp'    : f'@{temp_addr}    // addr = 5 + {index}',
+        'temp'    : f'@{5 + int(index)}    // addr = 5 + {index}',
         'pointer' : f"@{'THIS' if index == '0' else 'THAT'}",
+        'static'  : f"@{state['class']}.{index}",
 
         'local'   : f'@LCL\n{latt_common}',
         'argument': f'@ARG\n{latt_common}',
         'this'    : f'@THIS\n{latt_common}',
         'that'    : f'@THAT\n{latt_common}',
     }
-    return numeric_segments[segment]
+    return address[segment]
 
 
-def write_push(segment: str, index: str) -> tuple:
-    addr = _find_addr(segment, index)
-    
+def write_push(segment: str, index: str, state: dict) -> Tuple[Tuple[str, ...], dict]:
+    addr = _find_addr(segment, index, state)
+
     if segment == 'constant':
         D = f'D=A    // D = {index}'
     else:
         D =  'D=M    // D = *addr'
 
-    return (
+    asm_block = (
         addr,
         D,
         '@SP',
@@ -41,12 +39,14 @@ def write_push(segment: str, index: str) -> tuple:
         'M=M+1  // SP++',
     )
 
+    return asm_block, state
 
-def write_pop(segment: str, index: str) -> tuple:
-    addr = _find_addr(segment, index)
+
+def write_pop(segment: str, index: str, state: dict) -> Tuple[Tuple[str, ...], dict]:
+    addr = _find_addr(segment, index, state)
 
     if segment == 'pointer':
-        return (
+        asm_block = (
             '@SP',
             'AM=M-1 // SP--',
             'D=M    // D = *SP',
@@ -54,7 +54,7 @@ def write_pop(segment: str, index: str) -> tuple:
            f"M=D    // {'THIS' if index == '0' else 'THAT'} = *SP",
         )
     else:
-        return (
+        asm_block = (
             addr,
             'D=A    // D = addr',
             '@SP',
@@ -65,3 +65,5 @@ def write_pop(segment: str, index: str) -> tuple:
             'D=A-D  // addr - (addr - *SP) = *SP!',
             'M=D    // *addr = *SP!!!',
         )
+    
+    return asm_block, state
