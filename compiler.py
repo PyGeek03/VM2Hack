@@ -1,9 +1,9 @@
 from typing import Tuple, List
 
 import calculate
+import mem_access
 import branching
 import function
-import mem_access
 
 
 pointers_base = ((256, 'SP'), (300, 'LCL'), (400, 'ARG'), (3000, 'THIS'), (3010, 'THAT'))
@@ -29,20 +29,20 @@ stateless = {
 
 # Commands that depend on and/or modify the state
 stateful = {
-    'eq' : calculate.write_eq,
-    'gt' : calculate.write_gt,
-    'lt' : calculate.write_lt,
-
-    'label'  : branching.write_label,
-    'goto'   : branching.write_goto,
-    'if-goto': branching.write_if,
-
+    'push': mem_access.write_push,
+    'pop' : mem_access.write_pop,
+    
+    'eq'  : calculate.write_eq,
+    'gt'  : calculate.write_gt,
+    'lt'  : calculate.write_lt,
+    
     'function': function.write_function,
     'call'    : function.write_call,
     'return'  : function.write_return,
-
-    'push': mem_access.write_push,
-    'pop' : mem_access.write_pop,
+    
+    'label'   : branching.write_label,
+    'goto'    : branching.write_goto,
+    'if-goto' : branching.write_if,
 }
 
 
